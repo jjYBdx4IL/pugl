@@ -2,6 +2,7 @@ data_dir = get_option('prefix') / get_option('datadir') / 'pugl-0'
 example_defines = ['-DPUGL_DATA_DIR="@0@"'.format(data_dir)]
 
 gl_examples = [
+  'pugl_clipboard_demo.c',
   'pugl_cpp_demo.cpp',
   'pugl_embed_demo.c',
   'pugl_print_events.c',
@@ -70,6 +71,10 @@ if is_variable('cpp')
 endif
 
 subdir('shaders')
+
+if host_machine.system() == 'darwin'
+  subdir('pugl_clipboard_demo.app')
+endif
 
 # Build GL examples
 if opengl_dep.found()
