@@ -184,6 +184,11 @@ printEvent(const PuglEvent* event, const char* prefix, const bool verbose)
     return PRINT("%sLoop enter\n", prefix);
   case PUGL_LOOP_LEAVE:
     return PRINT("%sLoop leave\n", prefix);
+  case PUGL_DATA_OFFER:
+    return PRINT(
+      "%sData offer at   " PFMT "\n", prefix, event->offer.x, event->offer.y);
+  case PUGL_DATA:
+    return PRINT("%sData\n", prefix);
   default:
     break;
   }
@@ -263,6 +268,8 @@ puglViewHintString(const PuglViewHint hint)
     return "Ignore key repeat";
   case PUGL_REFRESH_RATE:
     return "Refresh rate";
+  case PUGL_ACCEPT_DROP:
+    return "Accept drop";
   case PUGL_NUM_VIEW_HINTS:
     break;
   }

@@ -55,7 +55,6 @@ struct PuglViewImpl {
   PuglHandle         handle;
   PuglEventFunc      eventFunc;
   char*              title;
-  PuglBlob           clipboard;
   PuglNativeView     parent;
   uintptr_t          transientParent;
   PuglRect           frame;

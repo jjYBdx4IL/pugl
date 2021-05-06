@@ -150,9 +150,12 @@ elif host_machine.system() == 'windows'
 
   add_project_arguments(win_args, language: ['c', 'cpp'])
 
+  user32_dep = cc.find_library('USER32')
+  shlwapi_dep = cc.find_library('SHLWAPI')
+
   platform = 'win'
   platform_sources = files('src/win.c')
-  core_deps = []
+  core_deps = [user32_dep, shlwapi_dep]
   extension = '.c'
 
 else # X11

@@ -24,8 +24,6 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 
 static const int       borderWidth    = 64;
 static const uintptr_t reverseTimerId = 1u;

@@ -1,5 +1,5 @@
 /*
-  Copyright 2012-2020 David Robillard <d@drobilla.net>
+  Copyright 2012-2021 David Robillard <d@drobilla.net>
 
   Permission to use, copy, modify, and/or distribute this software for any
   purpose with or without fee is hereby granted, provided that the above
@@ -19,6 +19,7 @@
 
 #include "pugl/pugl.h"
 
+#include <cstddef>
 #include <cstdint>
 
 #if defined(PUGL_HPP_THROW_FAILED_CONSTRUCTION)
@@ -119,6 +120,8 @@ using EventType    = PuglEventType;    ///< @copydoc PuglEventType
 using EventFlag    = PuglEventFlag;    ///< @copydoc PuglEventFlag
 using EventFlags   = PuglEventFlags;   ///< @copydoc PuglEventFlags
 using CrossingMode = PuglCrossingMode; ///< @copydoc PuglCrossingMode
+using Clipboard    = PuglClipboard;    ///< @copydoc PuglClipboard
+using Action       = PuglAction;       ///< @copydoc PuglAction
 
 /// @copydoc PuglCreateEvent
 using CreateEvent = Event<PUGL_CREATE, PuglCreateEvent>;
@@ -188,6 +191,12 @@ using LoopEnterEvent = Event<PUGL_LOOP_ENTER, PuglLoopEnterEvent>;
 
 /// @copydoc PuglLoopLeaveEvent
 using LoopLeaveEvent = Event<PUGL_LOOP_LEAVE, PuglLoopLeaveEvent>;
+
+/// @copydoc PuglDataOfferEvent
+using DataOfferEvent = Event<PUGL_DATA_OFFER, PuglDataOfferEvent>;
+
+/// @copydoc PuglDataEvent
+using DataEvent = Event<PUGL_DATA, PuglDataEvent>;
 
 /**
    @}
@@ -582,6 +591,41 @@ public:
       puglSetCursor(cobj(), static_cast<PuglCursor>(cursor)));
   }
 
+  /// @copydoc puglRegisterDragType
+  Status registerDragType(const char* const type)
+  {
+    return static_cast<Status>(puglRegisterDragType(cobj(), type));
+  }
+
+  /// @copydoc puglGetNumClipboardTypes
+  size_t numClipboardTypes(const Clipboard clipboard) const
+  {
+    return puglGetNumClipboardTypes(cobj(), clipboard);
+  }
+
+  /// @copydoc puglGetClipboardType
+  const char* clipboardType(const Clipboard clipboard,
+                            const size_t    typeIndex) const
+  {
+    return puglGetClipboardType(cobj(), clipboard, typeIndex);
+  }
+
+  /// @copydoc puglAcceptOffer
+  Status acceptOffer(const DataOfferEvent& offer,
+                     const size_t          typeIndex,
+                     const Action          action,
+                     const Rect&           region)
+  {
+    return static_cast<Status>(
+      puglAcceptOffer(cobj(), &offer, typeIndex, action, region));
+  }
+
+  /// @copydoc puglRejectOffer
+  Status rejectOffer(const DataOfferEvent& offer, const Rect& region)
+  {
+    return static_cast<Status>(puglRejectOffer(cobj(), &offer, region));
+  }
+
   /// @copydoc puglRequestAttention
   Status requestAttention() noexcept
   {
@@ -700,6 +744,10 @@ private:
       return target.onEvent(LoopEnterEvent{event->any});
     case PUGL_LOOP_LEAVE:
       return target.onEvent(LoopLeaveEvent{event->any});
+    case PUGL_DATA_OFFER:
+      return target.onEvent(DataOfferEvent{event->offer});
+    case PUGL_DATA:
+      return target.onEvent(DataEvent{event->data});
     }
 
     return Status::failure;

@@ -39,6 +39,21 @@ typedef struct {
   Atom NET_WM_STATE;
   Atom NET_WM_STATE_DEMANDS_ATTENTION;
   Atom NET_WM_STATE_HIDDEN;
+  Atom TARGETS;
+  Atom XdndActionCopy;
+  Atom XdndActionLink;
+  Atom XdndActionMove;
+  Atom XdndActionPrivate;
+  Atom XdndAware;
+  Atom XdndDrop;
+  Atom XdndEnter;
+  Atom XdndFinished;
+  Atom XdndLeave;
+  Atom XdndPosition;
+  Atom XdndSelection;
+  Atom XdndStatus;
+  Atom XdndTypeList;
+  Atom text_uri_list;
 } PuglX11Atoms;
 
 typedef struct {
@@ -46,6 +61,20 @@ typedef struct {
   PuglView* view;
   uintptr_t id;
 } PuglTimer;
+
+typedef struct {
+  PuglClipboard clipboard;
+  Atom          selection;
+  Atom          property;
+  Window        source;
+  Atom*         formats;
+  char**        formatStrings;
+  unsigned long numFormats;
+  PuglAction    acceptedAction;
+  size_t        acceptedFormatIndex;
+  Atom          acceptedFormat;
+  PuglBlob      data;
+} PuglX11Clipboard;
 
 struct PuglWorldInternalsImpl {
   Display*     display;
@@ -60,14 +89,16 @@ struct PuglWorldInternalsImpl {
 };
 
 struct PuglInternalsImpl {
-  Display*     display;
-  XVisualInfo* vi;
-  Window       win;
-  XIC          xic;
-  PuglSurface* surface;
-  PuglEvent    pendingConfigure;
-  PuglEvent    pendingExpose;
-  int          screen;
+  Display*         display;
+  XVisualInfo*     vi;
+  Window           win;
+  XIC              xic;
+  PuglSurface*     surface;
+  PuglEvent        pendingConfigure;
+  PuglEvent        pendingExpose;
+  PuglX11Clipboard clipboard;
+  PuglX11Clipboard drag;
+  int              screen;
 #ifdef HAVE_XCURSOR
   unsigned cursorShape;
 #endif

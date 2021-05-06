@@ -36,6 +36,8 @@ typedef enum {
   START,
   EXPOSED,
   COPIED,
+  PASTED,
+  RECEIVED_OFFER,
   FINISHED,
 } State;
 
@@ -71,8 +73,12 @@ onCopierEvent(PuglView* const view, const PuglEvent* const event)
     assert(event->timer.id == copierTimerId);
 
     if (test->state < COPIED) {
-      puglSetClipboard(
-        view, "text/plain", "Copied Text", strlen("Copied Text") + 1);
+      puglSetClipboard(view,
+                       PUGL_CLIPBOARD_GENERAL,
+                       "text/plain",
+                       "Copied Text",
+                       strlen("Copied Text") + 1);
+
       test->state = COPIED;
     }
 
@@ -107,16 +113,33 @@ onPasterEvent(PuglView* const view, const PuglEvent* const event)
     assert(event->timer.id == pasterTimerId);
 
     if (test->state == COPIED) {
-      const char* type = NULL;
-      size_t      len  = 0;
-      const char* text = (const char*)puglGetClipboard(view, &type, &len);
+      assert(!puglPaste(view));
+      test->state = PASTED;
+    }
 
-      assert(!strcmp(type, "text/plain"));
+    break;
+
+  case PUGL_DATA_OFFER:
+    if (test->state == PASTED) {
+      test->state = RECEIVED_OFFER;
+
+      assert(!puglAcceptOffer(
+        view, &event->offer, 0, PUGL_ACTION_COPY, puglGetFrame(view)));
+    }
+    break;
+
+  case PUGL_DATA:
+    if (test->state == RECEIVED_OFFER) {
+      size_t      len = 0;
+      const char* text =
+        (const char*)puglGetClipboard(view, PUGL_CLIPBOARD_GENERAL, 0, &len);
+
+      // Check that the offered data is what we copied earlier
+      assert(text);
       assert(!strcmp(text, "Copied Text"));
 
       test->state = FINISHED;
     }
-
     break;
 
   default:

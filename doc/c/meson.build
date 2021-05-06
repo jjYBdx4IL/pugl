@@ -15,6 +15,7 @@ c_rst_files = files(
   'view.rst',
   'events.rst',
   'event-loop.rst',
+  'clipboards.rst',
   'shutting-down.rst'
 )
 

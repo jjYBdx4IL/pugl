@@ -19,7 +19,6 @@
 */
 
 #include "cube_view.h"
-#include "demo_utils.h"
 #include "test/test_utils.h"
 
 #include "pugl/gl.h"
@@ -27,6 +26,8 @@
 
 #include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 typedef struct {
@@ -79,15 +80,56 @@ onKeyPress(PuglView* const view, const PuglKeyEvent* const event)
   if (event->key == 'q' || event->key == PUGL_KEY_ESCAPE) {
     app->quit = 1;
   } else if ((event->state & PUGL_MOD_CTRL) && event->key == 'c') {
-    puglSetClipboard(view, NULL, copyString, strlen(copyString) + 1);
+    puglSetClipboard(view,
+                     PUGL_CLIPBOARD_GENERAL,
+                     "text/plain",
+                     copyString,
+                     strlen(copyString));
 
     fprintf(stderr, "Copy \"%s\"\n", copyString);
   } else if ((event->state & PUGL_MOD_CTRL) && event->key == 'v') {
-    const char* type = NULL;
-    size_t      len  = 0;
-    const char* text = (const char*)puglGetClipboard(view, &type, &len);
+    puglPaste(view);
+  }
+}
 
-    fprintf(stderr, "Paste \"%s\"\n", text);
+static void
+onDataOffer(PuglView* view, const PuglDataOfferEvent* event)
+{
+  const PuglClipboard clipboard = event->clipboard;
+  const size_t        numTypes  = puglGetNumClipboardTypes(view, clipboard);
+
+  // Print all offered types to be useful as a testing program
+  fprintf(stderr, "Offered %zu types:\n", numTypes);
+  for (size_t t = 0; t < numTypes; ++t) {
+    const char* type = puglGetClipboardType(view, clipboard, t);
+    fprintf(stderr, "\t%s\n", type);
+  }
+
+  // Accept the first type found that we support (namely text)
+  for (size_t t = 0; t < numTypes; ++t) {
+    const char* type = puglGetClipboardType(view, clipboard, t);
+    if (!strncmp(type, "text/", 5)) {
+      puglAcceptOffer(view, event, t, PUGL_ACTION_LINK, puglGetFrame(view));
+      return;
+    }
+  }
+}
+
+static void
+onData(PuglView* view, const PuglDataEvent* event)
+{
+  const PuglClipboard clipboard = event->clipboard;
+  const uint32_t      typeIndex = event->typeIndex;
+
+  const char* const type = puglGetClipboardType(view, clipboard, typeIndex);
+
+  fprintf(stderr, "Received data type: %s\n", type);
+  if (!strncmp(type, "text/", 5)) {
+    // Accept any text type
+    size_t      len  = 0;
+    const void* data = puglGetClipboard(view, clipboard, typeIndex, &len);
+
+    fprintf(stderr, "Data:\n%s\n", (const char*)data);
   }
 }
 
@@ -151,6 +193,12 @@ onEvent(PuglView* view, const PuglEvent* event)
   case PUGL_FOCUS_OUT:
     redisplayView(app, view);
     break;
+  case PUGL_DATA_OFFER:
+    onDataOffer(view, &event->offer);
+    break;
+  case PUGL_DATA:
+    onData(view, &event->data);
+    break;
   default:
     break;
   }
@@ -191,12 +239,16 @@ main(int argc, char** argv)
   puglSetMaxSize(view, 2048, 2048);
   puglSetBackend(view, puglGlBackend());
 
+  puglRegisterDragType(view, "text/plain");
+  puglRegisterDragType(view, "text/uri-list");
+
   puglSetViewHint(view, PUGL_USE_DEBUG_CONTEXT, opts.errorChecking);
   puglSetViewHint(view, PUGL_RESIZABLE, opts.resizable);
   puglSetViewHint(view, PUGL_SAMPLES, opts.samples);
   puglSetViewHint(view, PUGL_DOUBLE_BUFFER, opts.doubleBuffer);
   puglSetViewHint(view, PUGL_SWAP_INTERVAL, opts.sync);
   puglSetViewHint(view, PUGL_IGNORE_KEY_REPEAT, opts.ignoreKeyRepeat);
+  puglSetViewHint(view, PUGL_ACCEPT_DROP, true);
   puglSetHandle(view, &app.cube);
   puglSetEventFunc(view, onEvent);
 

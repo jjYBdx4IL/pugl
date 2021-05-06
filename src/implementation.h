@@ -27,7 +27,7 @@
 PUGL_BEGIN_DECLS
 
 /// Set `blob` to `data` with length `len`, reallocating if necessary
-void
+PuglStatus
 puglSetBlob(PuglBlob* dest, const void* data, size_t len);
 
 /// Reallocate and set `*dest` to `string`
@@ -44,7 +44,7 @@ puglFreeWorldInternals(PuglWorld* world);
 
 /// Allocate and initialise view internals (implemented once per platform)
 PuglInternals*
-puglInitViewInternals(void);
+puglInitViewInternals(PuglWorld* world);
 
 /// Destroy and free view internals (implemented once per platform)
 void
@@ -70,6 +70,12 @@ puglExpose(PuglView* view, const PuglEvent* event);
 void
 puglDispatchEvent(PuglView* view, const PuglEvent* event);
 
+/*
+
+/// Return a pointer to the blob for data retrieved from the given clipboard
+PuglBlob*
+puglGetClipboardBlob(PuglView* view);
+
 /// Set internal (stored in view) clipboard contents
 const void*
 puglGetInternalClipboard(const PuglView* view, const char** type, size_t* len);
@@ -80,6 +86,8 @@ puglSetInternalClipboard(PuglView*   view,
                          const char* type,
                          const void* data,
                          size_t      len);
+
+*/
 
 PUGL_END_DECLS
 

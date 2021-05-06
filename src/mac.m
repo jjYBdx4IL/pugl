@@ -38,6 +38,70 @@ typedef NSUInteger NSEventSubtype;
 typedef NSUInteger NSWindowStyleMask;
 #endif
 
+typedef struct {
+  const char* uti;
+  const char* mimeType;
+} Datatype;
+
+#define NUM_DATATYPES 16
+
+static const Datatype datatypes[NUM_DATATYPES + 1] = {
+  {"com.apple.pasteboard.promised-file-url", "text/uri-list"},
+  {"org.7-zip.7-zip-archive", "application/x-7z-compressed"},
+  {"org.gnu.gnu-zip-tar-archive", "application/tar+gzip"},
+  {"public.7z-archive", "application/x-7z-compressed"},
+  {"public.cpio-archive", "application/x-cpio"},
+  {"public.deb-archive", "application/vnd.debian.binary-package"},
+  {"public.file-url", "text/uri-list"},
+  {"public.html", "text/html"},
+  {"public.png", "image/png"},
+  {"public.rar-archive", "application/x-rar-compressed"},
+  {"public.rpm-archive", "application/x-rpm"},
+  {"public.rtf", "text/rtf"},
+  {"public.url", "text/uri-list"},
+  {"public.utf8-plain-text", "text/plain"},
+  {"public.utf8-tab-separated-values-text", "text/tab-separated-values"},
+  {"public.xz-archive", "application/x-xz"},
+  {NULL, NULL},
+};
+
+static NSString*
+mimeTypeForUti(const NSString* const uti)
+{
+  const char* const utiString = [uti UTF8String];
+
+  // First try internal map to override types the system won't convert sensibly
+  for (const Datatype* datatype = datatypes; datatype->uti; ++datatype) {
+    if (!strcmp(utiString, datatype->uti)) {
+      return [NSString stringWithUTF8String:datatype->mimeType];
+    }
+  }
+
+  // Try to get the MIME type from the system
+  return (NSString*)CFBridgingRelease(UTTypeCopyPreferredTagWithClass(
+    (__bridge CFStringRef)uti, kUTTagClassMIMEType));
+}
+
+static NSString*
+utiForMimeType(const NSString* const mimeType)
+{
+  const char* const mimeTypeString = [mimeType UTF8String];
+
+  // First try internal map to override types the system won't convert sensibly
+  for (const Datatype* datatype = datatypes; datatype->mimeType; ++datatype) {
+    if (!strcmp(mimeTypeString, datatype->mimeType)) {
+      return [NSString stringWithUTF8String:datatype->uti];
+    }
+  }
+
+  // Try to get the UTI from the system
+  CFStringRef uti = UTTypeCreatePreferredIdentifierForTag(
+    kUTTagClassMIMEType, (__bridge CFStringRef)mimeType, NULL);
+
+  return (uti && UTTypeIsDynamic(uti)) ? (NSString*)CFBridgingRelease(uti)
+                                       : NULL;
+}
+
 static NSRect
 rectToScreen(NSScreen* screen, NSRect rect)
 {
@@ -188,6 +252,10 @@ updateViewRect(PuglView* view)
   NSTrackingArea*            trackingArea;
   NSMutableAttributedString* markedText;
   NSMutableDictionary*       userTimers;
+  id<NSDraggingInfo>         dragSource;
+  NSDragOperation            dragOperation;
+  size_t                     dragTypeIndex;
+  NSString*                  droppedUriList;
   bool                       reshaped;
 }
 
@@ -254,6 +322,111 @@ updateViewRect(PuglView* view)
 - (void)setReshaped
 {
   reshaped = true;
+}
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender
+{
+  dragSource     = sender;
+  dragOperation  = NSDragOperationNone;
+  droppedUriList = nil;
+
+  const NSPoint            wloc  = [sender draggingLocation];
+  const NSPoint            rloc  = {0, 0}; // FIXME
+  const PuglEventDataOffer offer = {
+    PUGL_DATA_OFFER,
+    0,
+    mach_absolute_time() / 1e9,
+    wloc.x,
+    wloc.y,
+    rloc.x,
+    [[NSScreen mainScreen] frame].size.height - rloc.y,
+    PUGL_CLIPBOARD_DRAG,
+  };
+
+  PuglEvent offerEvent;
+  offerEvent.offer = offer;
+  puglDispatchEvent(puglview, &offerEvent);
+  return self->dragOperation;
+}
+
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender
+{
+  assert(dragSource == sender);
+
+  const NSPoint            wloc  = [sender draggingLocation];
+  const NSPoint            rloc  = {0, 0}; // FIXME
+  const PuglEventDataOffer offer = {
+    PUGL_DATA_OFFER,
+    0,
+    mach_absolute_time() / 1e9,
+    wloc.x,
+    wloc.y,
+    rloc.x,
+    [[NSScreen mainScreen] frame].size.height - rloc.y,
+    PUGL_CLIPBOARD_DRAG,
+  };
+
+  PuglEvent offerEvent;
+  offerEvent.offer = offer;
+  puglDispatchEvent(puglview, &offerEvent);
+  return self->dragOperation;
+}
+
+- (void)draggingEnded:(id<NSDraggingInfo>)sender
+{
+  NSPasteboard* const pasteboard = [sender draggingPasteboard];
+  const NSPoint       wloc       = [sender draggingLocation];
+  const NSPoint       rloc       = {0, 0}; // FIXME
+
+  const NSArray<NSPasteboardType>* const types = [pasteboard types];
+  if (dragTypeIndex >= [types count]) {
+    return;
+  }
+
+  NSString* const uti = [types objectAtIndex:dragTypeIndex];
+  if ([uti isEqualToString:@"public.file-url"] ||
+      [uti isEqualToString:@"com.apple.pasteboard.promised-file-url"]) {
+    // Convert file URI items into a single text/uri-list
+    droppedUriList = [NSString string];
+    for (const NSPasteboardItem* item in [pasteboard pasteboardItems]) {
+      NSString* const value = [item stringForType:uti];
+      if (!value) {
+        continue;
+      }
+
+      NSURL* const      idUri   = [NSURL URLWithString:value];
+      const char* const pathRep = [idUri fileSystemRepresentation];
+      NSString* const   path    = [NSString stringWithUTF8String:pathRep];
+      NSString* const   pathUri = [[NSURL fileURLWithPath:path] absoluteString];
+
+      droppedUriList = [droppedUriList stringByAppendingString:pathUri];
+      droppedUriList = [droppedUriList stringByAppendingFormat:@"\n"];
+    }
+  }
+
+  const PuglEventData data = {
+    PUGL_DATA,
+    0,
+    mach_absolute_time() / 1e9,
+    wloc.x,
+    wloc.y,
+    rloc.x,
+    [[NSScreen mainScreen] frame].size.height - rloc.y,
+    PUGL_CLIPBOARD_DRAG,
+    (uint32_t)dragTypeIndex, // FIXME: ?
+  };
+
+  PuglEvent dataEvent;
+  dataEvent.data = data;
+  puglDispatchEvent(puglview, &dataEvent);
+
+  dragSource = nil;
+}
+
+- (void)draggingExited:(id<NSDraggingInfo>)sender
+{
+  assert(dragSource == sender);
+  dragSource = nil;
 }
 
 static uint32_t
@@ -878,7 +1051,7 @@ puglGetNativeWorld(PuglWorld* world)
 }
 
 PuglInternals*
-puglInitViewInternals(void)
+puglInitViewInternals(PuglWorld* PUGL_UNUSED(world))
 {
   PuglInternals* impl = (PuglInternals*)calloc(1, sizeof(PuglInternals));
 
@@ -990,6 +1163,10 @@ puglRealize(PuglView* view)
   [impl->wrapperView addSubview:impl->drawView];
   [impl->wrapperView setHidden:NO];
   [impl->drawView setHidden:NO];
+
+  if (impl->registeredDragTypes && [impl->registeredDragTypes count]) {
+    [impl->wrapperView registerForDraggedTypes:impl->registeredDragTypes];
+  }
 
   if (view->parent) {
     NSView* pview = (NSView*)view->parent;
@@ -1421,21 +1598,189 @@ puglSetTransientFor(PuglView* view, PuglNativeView parent)
   return PUGL_FAILURE;
 }
 
-const void*
-puglGetClipboard(PuglView* const    view,
-                 const char** const type,
-                 size_t* const      len)
+static void
+addRegisteredDragType(PuglView* const view, NSString* uti)
 {
-  NSPasteboard* const pasteboard = [NSPasteboard generalPasteboard];
-
-  if ([[pasteboard types] containsObject:NSStringPboardType]) {
-    const NSString* str  = [pasteboard stringForType:NSStringPboardType];
-    const char*     utf8 = [str UTF8String];
-
-    puglSetBlob(&view->clipboard, utf8, strlen(utf8) + 1);
+  if (!view->impl->registeredDragTypes) {
+    view->impl->registeredDragTypes = [[NSMutableArray alloc] init];
   }
 
-  return puglGetInternalClipboard(view, type, len);
+  [view->impl->registeredDragTypes addObject:uti];
+}
+
+PuglStatus
+puglRegisterDragType(PuglView* const view, const char* const type)
+{
+  PuglWrapperView* const wrapper = view->impl->wrapperView;
+
+  CFStringRef mimeType =
+    CFStringCreateWithCString(NULL, type, kCFStringEncodingUTF8);
+
+  // First register any types in the internal map that map to this MIME type
+  bool registered = false;
+  for (const Datatype* datatype = datatypes; datatype->mimeType; ++datatype) {
+    if (!strcmp(type, datatype->mimeType)) {
+      NSString* uti = [NSString stringWithUTF8String:datatype->uti];
+
+      addRegisteredDragType(view, uti);
+      registered = true;
+    }
+  }
+
+  // Try to get the UTI from the system
+  if (!registered) {
+    NSString* uti = utiForMimeType((__bridge NSString*)mimeType);
+    if (uti) {
+      addRegisteredDragType(view, uti);
+    }
+  }
+
+  if (wrapper) {
+    [wrapper registerForDraggedTypes:view->impl->registeredDragTypes];
+  }
+
+  return PUGL_SUCCESS;
+}
+
+static NSPasteboard*
+getPasteboard(const PuglView* const view, const PuglClipboard clipboard)
+{
+  switch (clipboard) {
+  case PUGL_CLIPBOARD_GENERAL:
+    return [NSPasteboard generalPasteboard];
+
+  case PUGL_CLIPBOARD_DRAG:
+    if (view->impl->wrapperView->dragSource) {
+      return [view->impl->wrapperView->dragSource draggingPasteboard];
+    }
+
+    break;
+  }
+
+  return NULL;
+}
+
+PuglStatus
+puglPaste(PuglView* const view)
+{
+  const PuglEventDataOffer offer = {
+    PUGL_DATA_OFFER,
+    0,
+    mach_absolute_time() / 1e9,
+    0,
+    0,
+    view->frame.x,
+    view->frame.y,
+    PUGL_CLIPBOARD_DRAG,
+  };
+
+  PuglEvent offerEvent;
+  offerEvent.offer = offer;
+  puglDispatchEvent(view, &offerEvent);
+
+  return PUGL_SUCCESS;
+}
+
+size_t
+puglGetNumClipboardTypes(const PuglView* const view,
+                         const PuglClipboard   clipboard)
+{
+  NSPasteboard* const pasteboard = getPasteboard(view, clipboard);
+
+  return pasteboard ? [[pasteboard types] count] : 0;
+}
+
+const char*
+puglGetClipboardType(PuglView* const     view,
+                     const PuglClipboard clipboard,
+                     const size_t        typeIndex)
+{
+  NSPasteboard* const pasteboard = getPasteboard(view, clipboard);
+  if (!pasteboard) {
+    return NULL;
+  }
+
+  const NSArray<NSPasteboardType>* const types = [pasteboard types];
+  if (typeIndex >= [types count]) {
+    return NULL;
+  }
+
+  NSString* const uti      = [types objectAtIndex:typeIndex];
+  NSString* const mimeType = mimeTypeForUti(uti);
+
+  // FIXME: lifetime?
+  return mimeType ? [mimeType UTF8String] : [uti UTF8String];
+}
+
+static NSDragOperation
+getDragOperation(const PuglDropAction action)
+{
+  switch (action) {
+  case PUGL_DROP_ACTION_COPY:
+    return NSDragOperationCopy;
+  case PUGL_DROP_ACTION_LINK:
+    return NSDragOperationLink;
+  case PUGL_DROP_ACTION_MOVE:
+    return NSDragOperationMove;
+  case PUGL_DROP_ACTION_PRIVATE:
+    break;
+  }
+
+  return NSDragOperationPrivate;
+}
+
+PuglStatus
+puglAcceptOffer(PuglView* const                 view,
+                const PuglEventDataOffer* const offer,
+                const size_t                    typeIndex,
+                PuglDropAction                  action,
+                const PuglRect                  PUGL_UNUSED(region))
+{
+  PuglWrapperView* const wrapper    = view->impl->wrapperView;
+  NSPasteboard* const    pasteboard = getPasteboard(view, offer->clipboard);
+  if (!pasteboard || offer->clipboard == PUGL_CLIPBOARD_GENERAL) {
+    return PUGL_BAD_PARAMETER;
+  }
+
+  const NSArray<NSPasteboardType>* const types = [pasteboard types];
+  if (typeIndex >= [types count]) {
+    return PUGL_BAD_PARAMETER;
+  }
+
+  wrapper->dragOperation = getDragOperation(action);
+  wrapper->dragTypeIndex = typeIndex;
+  return PUGL_SUCCESS;
+}
+
+const void*
+puglGetClipboard(PuglView* const     view,
+                 const PuglClipboard clipboard,
+                 const size_t        typeIndex,
+                 size_t* const       len)
+{
+  *len = 0;
+
+  NSPasteboard* const pasteboard = getPasteboard(view, clipboard);
+  if (!pasteboard) {
+    return NULL;
+  }
+
+  const NSArray<NSPasteboardType>* const types = [pasteboard types];
+  if (typeIndex >= [types count]) {
+    return NULL;
+  }
+
+  NSString* const uti = [types objectAtIndex:typeIndex];
+  if ([uti isEqualToString:@"public.file-url"] ||
+      [uti isEqualToString:@"com.apple.pasteboard.promised-file-url"]) {
+    *len = [view->impl->wrapperView->droppedUriList length];
+    return [view->impl->wrapperView->droppedUriList UTF8String];
+  }
+
+  const NSData* const data = [pasteboard dataForType:uti];
+
+  *len = [data length];
+  return [data bytes];
 }
 
 static NSCursor*
@@ -1480,28 +1825,24 @@ puglSetCursor(PuglView* view, PuglCursor cursor)
 }
 
 PuglStatus
-puglSetClipboard(PuglView* const   view,
-                 const char* const type,
-                 const void* const data,
-                 const size_t      len)
+puglSetClipboard(PuglView*           PUGL_UNUSED(view),
+                 const PuglClipboard clipboard,
+                 const char* const   type,
+                 const void* const   data,
+                 const size_t        len)
 {
-  NSPasteboard* const pasteboard = [NSPasteboard generalPasteboard];
-  const char* const   str        = (const char*)data;
+  if (clipboard == PUGL_CLIPBOARD_GENERAL) {
+    NSPasteboard* const pasteboard = [NSPasteboard generalPasteboard];
+    NSString* const     mimeType   = [NSString stringWithUTF8String:type];
+    NSString* const     uti        = utiForMimeType(mimeType);
+    NSData* const       blob       = [NSData dataWithBytes:data length:len];
 
-  PuglStatus st = puglSetInternalClipboard(view, type, data, len);
-  if (st) {
-    return st;
+    [pasteboard declareTypes:[NSArray arrayWithObjects:uti, nil] owner:nil];
+
+    if ([pasteboard setData:blob forType:uti]) {
+      return PUGL_SUCCESS;
+    }
   }
 
-  NSString* nsString = [NSString stringWithUTF8String:str];
-  if (nsString) {
-    [pasteboard declareTypes:[NSArray arrayWithObjects:NSStringPboardType, nil]
-                       owner:nil];
-
-    [pasteboard setString:nsString forType:NSStringPboardType];
-
-    return PUGL_SUCCESS;
-  }
-
-  return PUGL_UNKNOWN_ERROR;
+  return PUGL_FAILURE;
 }

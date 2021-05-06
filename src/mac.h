@@ -24,7 +24,7 @@
 
 #include <stdint.h>
 
-@interface PuglWrapperView : NSView<NSTextInputClient>
+@interface PuglWrapperView : NSView<NSTextInputClient, NSDraggingDestination>
 
 - (void)dispatchExpose:(NSRect)rect;
 - (void)setReshaped;
@@ -43,13 +43,14 @@ struct PuglWorldInternalsImpl {
 };
 
 struct PuglInternalsImpl {
-  NSApplication*   app;
-  PuglWrapperView* wrapperView;
-  NSView*          drawView;
-  NSCursor*        cursor;
-  PuglWindow*      window;
-  uint32_t         mods;
-  bool             mouseTracked;
+  NSApplication*             app;
+  NSMutableArray<NSString*>* registeredDragTypes;
+  PuglWrapperView*           wrapperView;
+  NSView*                    drawView;
+  NSCursor*                  cursor;
+  PuglWindow*                window;
+  uint32_t                   mods;
+  bool                       mouseTracked;
 };
 
 #endif // PUGL_DETAIL_MAC_H

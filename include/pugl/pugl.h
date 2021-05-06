@@ -1,5 +1,5 @@
 /*
-  Copyright 2012-2020 David Robillard <d@drobilla.net>
+  Copyright 2012-2021 David Robillard <d@drobilla.net>
 
   Permission to use, copy, modify, and/or distribute this software for any
   purpose with or without fee is hereby granted, provided that the above
@@ -192,6 +192,8 @@ typedef enum {
   PUGL_TIMER,          ///< Timer triggered, a #PuglTimerEvent
   PUGL_LOOP_ENTER,     ///< Recursive loop entered, a #PuglLoopEnterEvent
   PUGL_LOOP_LEAVE,     ///< Recursive loop left, a #PuglLoopLeaveEvent
+  PUGL_DATA_OFFER,     ///< Data offered from clipboard, a #PuglDataOfferEvent
+  PUGL_DATA,           ///< Data pasted or dropped, a #PuglDataEvent
 } PuglEventType;
 
 /// Common flags for all event types
@@ -225,6 +227,29 @@ typedef enum {
   PUGL_SCROLL_RIGHT, ///< Scroll right
   PUGL_SCROLL_SMOOTH ///< Smooth scroll in any direction
 } PuglScrollDirection;
+
+/**
+   A system clipboard.
+
+   A clipboard provides a unified interface for drag-and-drop and
+   copy-and-paste interactions.
+*/
+typedef enum {
+  PUGL_CLIPBOARD_GENERAL, ///< General clipboard for copy/pasted data
+  PUGL_CLIPBOARD_DRAG     ///< Drag clipboard for drag and drop data
+} PuglClipboard;
+
+/**
+   An action that can be performed on data from a clipboard.
+
+   This is used to provide feedback to the user during drag-and-drop.
+*/
+typedef enum {
+  PUGL_ACTION_COPY,    ///< Data will be copied
+  PUGL_ACTION_LINK,    ///< Data will be linked to
+  PUGL_ACTION_MOVE,    ///< Data will be moved
+  PUGL_ACTION_PRIVATE, ///< Unspecified private action
+} PuglAction;
 
 /// Common header for all event structs
 typedef struct {
@@ -500,6 +525,44 @@ typedef struct {
 } PuglTimerEvent;
 
 /**
+   Clipboard data offer event.
+
+   This event is sent when a clipboard has data present, possibly with several
+   datatypes.  While handling this event, the types can be investigated with
+   puglGetClipboardType() to decide whether to accept the offer with
+   puglAcceptOffer().
+*/
+typedef struct {
+  PuglEventType  type;      ///< #PUGL_DATA_OFFER
+  PuglEventFlags flags;     ///< Bitwise OR of #PuglEventFlag values
+  double         time;      ///< Time in seconds
+  double         x;         ///< View-relative X coordinate
+  double         y;         ///< View-relative Y coordinate
+  double         xRoot;     ///< Root-relative X coordinate
+  double         yRoot;     ///< Root-relative Y coordinate
+  PuglClipboard  clipboard; ///< Clipboard with available data
+} PuglDataOfferEvent;
+
+/**
+   Paste or drop event.
+
+   This event is sent after accepting a #PUGL_DATA_OFFER when the data has been
+   retrieved and converted.  While handling this event, the data can be
+   accessed with puglGetClipboard().
+*/
+typedef struct {
+  PuglEventType  type;      ///< #PUGL_DATA
+  PuglEventFlags flags;     ///< Bitwise OR of #PuglEventFlag values
+  double         time;      ///< Time in seconds
+  double         x;         ///< View-relative X coordinate
+  double         y;         ///< View-relative Y coordinate
+  double         xRoot;     ///< Root-relative X coordinate
+  double         yRoot;     ///< Root-relative Y coordinate
+  PuglClipboard  clipboard; ///< Clipboard with available data
+  uint32_t       typeIndex; ///< Index of datatype
+} PuglDataEvent;
+
+/**
    Recursive loop enter event.
 
    This event is sent when the window system enters a recursive loop.  The main
@@ -556,6 +619,8 @@ typedef union {
   PuglFocusEvent     focus;     ///< #PUGL_FOCUS_IN, #PUGL_FOCUS_OUT
   PuglClientEvent    client;    ///< #PUGL_CLIENT
   PuglTimerEvent     timer;     ///< #PUGL_TIMER
+  PuglDataOfferEvent offer;     ///< #PUGL_DATA_OFFER
+  PuglDataEvent      data;      ///< #PUGL_DATA
 } PuglEvent;
 
 /**
@@ -581,6 +646,7 @@ typedef enum {
   PUGL_SET_FORMAT_FAILED,     ///< Failed to set pixel format
   PUGL_CREATE_CONTEXT_FAILED, ///< Failed to create drawing context
   PUGL_UNSUPPORTED_TYPE,      ///< Unsupported data type
+  PUGL_NO_MEMORY,             ///< Failed to allocate memory
 } PuglStatus;
 
 /// Return a string describing a status code
@@ -792,6 +858,7 @@ typedef enum {
   PUGL_RESIZABLE,             ///< True if view should be resizable
   PUGL_IGNORE_KEY_REPEAT,     ///< True if key repeat events are ignored
   PUGL_REFRESH_RATE,          ///< Refresh rate in Hz
+  PUGL_ACCEPT_DROP,           ///< True if view accepts dropped data
 
   PUGL_NUM_VIEW_HINTS
 } PuglViewHint;
@@ -1148,22 +1215,114 @@ bool
 puglHasFocus(const PuglView* view);
 
 /**
+   Request data from the general copy/paste clipboard.
+*/
+PUGL_API
+PuglStatus
+puglPaste(PuglView* view);
+
+/**
+   Register a type as supported for drag and drop.
+
+   Before realizing the view, this function should be called for every type the
+   view may accept as a drop target.
+*/
+PUGL_API
+PuglStatus
+puglRegisterDragType(PuglView* view, const char* type);
+
+/**
+   Return the number of types available for the value in a clipboard.
+
+   Returns zero if the clipboard is empty.
+*/
+PUGL_API
+size_t
+puglGetNumClipboardTypes(const PuglView* view, PuglClipboard clipboard);
+
+/**
+   Return the identifier of a type available in a clipboard.
+
+   Returns null if `typeIndex` is out of bounds according to
+   puglGetNumClipboardTypes().
+*/
+PUGL_API
+const char*
+puglGetClipboardType(const PuglView* view,
+                     PuglClipboard   clipboard,
+                     size_t          typeIndex);
+
+/**
+   Accept data offered from a clipboard.
+
+   To accept a drop, this must be called while handling a #PUGL_DATA_OFFER
+   event.  Doing so will request the data from the source as the specified
+   type.  When the data is available, a #PUGL_DATA event will be sent to the
+   view which can then retrieve the data with puglGetClipboard().
+
+   @param offer The data offer event.
+
+   @param typeIndex The index of the type that the view will accept.  This is
+   the `typeIndex` argument to the call of puglGetClipboardType() that returned
+   the accepted type.
+
+   @param action The action that will be performed when the data is dropped.
+   This may be used to provide visual feedback to the user, for example by
+   having the drag source change the cursor.
+
+   @param region The region of the view that will accept this drop.  This may
+   be used by the system to avoid sending redundant events when the item is
+   dragged within the region.  This is only an optimization, an all-zero region
+   can safely be passed.
+*/
+PUGL_API
+PuglStatus
+puglAcceptOffer(PuglView*                 view,
+                const PuglDataOfferEvent* offer,
+                size_t                    typeIndex,
+                PuglAction                action,
+                PuglRect                  region);
+
+/**
+   Reject data offered from a clipboard.
+
+   This can be called instead of puglAcceptOffer() to explicitly reject the
+   offer.  Note that drag-and-drop will still work if this isn't called, but
+   applications should always explicitly accept or reject each data offer for
+   optimal behaviour.
+
+   @param offer The data offer event.
+
+   @param region The region of the view that will refuse this drop.  This may
+   be used by the system to avoid sending redundant events when the item is
+   dragged within the region.  This is only an optimization, an all-zero region
+   can safely be passed.
+*/
+PUGL_API
+PuglStatus
+puglRejectOffer(PuglView*                 view,
+                const PuglDataOfferEvent* offer,
+                PuglRect                  region);
+
+/**
    Set the clipboard contents.
 
    This sets the system clipboard contents, which can be retrieved with
    puglGetClipboard() or pasted into other applications.
 
    @param view The view.
+   @param clipboard Clipboard to set data for.
    @param type The MIME type of the data, "text/plain" is assumed if `NULL`.
    @param data The data to copy to the clipboard.
    @param len The length of data in bytes (including terminator if necessary).
 */
 PUGL_API
 PuglStatus
-puglSetClipboard(PuglView*   view,
-                 const char* type,
-                 const void* data,
-                 size_t      len);
+puglSetClipboard(PuglView*     view,
+                 PuglClipboard clipboard,
+                 const char*   type,
+                 const void*   data,
+                 size_t        len);
 
 /**
    Get the clipboard contents.
@@ -1172,13 +1331,17 @@ puglSetClipboard(PuglView*   view,
    puglSetClipboard() or copied from another application.
 
    @param view The view.
-   @param[out] type Set to the MIME type of the data.
+   @param clipboard Clipboard to get data from.
+   @param typeIndex Index of the data type to get the item as.
    @param[out] len Set to the length of the data in bytes.
    @return The clipboard contents, or null.
 */
 PUGL_API
 const void*
-puglGetClipboard(PuglView* view, const char** type, size_t* len);
+puglGetClipboard(PuglView*     view,
+                 PuglClipboard clipboard,
+                 size_t        typeIndex,
+                 size_t*       len);
 
 /**
    Set the mouse cursor.
