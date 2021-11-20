@@ -610,7 +610,29 @@ public:
     return puglGetClipboardType(cobj(), clipboard, typeIndex);
   }
 
-  /// @copydoc puglAcceptOffer
+  /**
+     Accept data offered from a clipboard.
+
+     To accept a drop, this must be called while handling a #PUGL_DATA_OFFER
+     event.  Doing so will request the data from the source as the specified
+     type.  When the data is available, a #PUGL_DATA event will be sent to the
+     view which can then retrieve the data with puglGetClipboard().
+
+     @param offer The data offer event.
+
+     @param typeIndex The index of the type that the view will accept.  This is
+     the `typeIndex` argument to the call of puglGetClipboardType() that
+     returned the accepted type.
+
+     @param action The action that will be performed when the data is dropped.
+     This may be used to provide visual feedback to the user, for example by
+     having the drag source change the cursor.
+
+     @param region The region of the view that will accept this drop.  This may
+     be used by the system to avoid sending redundant events when the item is
+     dragged within the region.  This is only an optimization, an all-zero
+     region can safely be passed.
+  */
   Status acceptOffer(const DataOfferEvent& offer,
                      const size_t          typeIndex,
                      const Action          action,
@@ -620,7 +642,21 @@ public:
       puglAcceptOffer(cobj(), &offer, typeIndex, action, region));
   }
 
-  /// @copydoc puglRejectOffer
+  /**
+     Reject data offered from a clipboard.
+
+     This can be called instead of puglAcceptOffer() to explicitly reject the
+     offer.  Note that drag-and-drop will still work if this isn't called, but
+     applications should always explicitly accept or reject each data offer for
+     optimal behaviour.
+
+     @param offer The data offer event.
+
+     @param region The region of the view that will refuse this drop.  This may
+     be used by the system to avoid sending redundant events when the item is
+     dragged within the region.  This is only an optimization, an all-zero
+     region can safely be passed.
+  */
   Status rejectOffer(const DataOfferEvent& offer, const Rect& region)
   {
     return static_cast<Status>(puglRejectOffer(cobj(), &offer, region));

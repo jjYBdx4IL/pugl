@@ -1260,6 +1260,8 @@ puglGetClipboardType(const PuglView* view,
    type.  When the data is available, a #PUGL_DATA event will be sent to the
    view which can then retrieve the data with puglGetClipboard().
 
+   @param view The view.
+
    @param offer The data offer event.
 
    @param typeIndex The index of the type that the view will accept.  This is
@@ -1290,6 +1292,8 @@ puglAcceptOffer(PuglView*                 view,
    offer.  Note that drag-and-drop will still work if this isn't called, but
    applications should always explicitly accept or reject each data offer for
    optimal behaviour.
+
+   @param view The view.
 
    @param offer The data offer event.
 
