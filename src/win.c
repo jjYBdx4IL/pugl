@@ -629,11 +629,10 @@ handleMessage(PuglView* view, UINT message, WPARAM wParam, LPARAM lParam)
 
       impl->droppedUrisLen = 0;
       for (UINT i = 0; i < numFiles; ++i) {
-        UINT pathLen       = sizeof(path) / sizeof(TCHAR);
-        UINT actualPathLen = DragQueryFile(drop, i, NULL, 0);
+        const UINT pathLen = sizeof(path) / sizeof(TCHAR);
         if (DragQueryFile(drop, i, path, pathLen)) {
           DWORD         urlLen = sizeof(url) / sizeof(TCHAR);
-          const HRESULT hres   = UrlCreateFromPath(path, url, &urlLen, NULL);
+          const HRESULT hres   = UrlCreateFromPath(path, url, &urlLen, 0);
           if (!FAILED(hres)) {
             impl->droppedUris = (char*)realloc(
               impl->droppedUris, impl->droppedUrisLen + urlLen + 2);
@@ -1119,9 +1118,9 @@ puglGetNumClipboardTypes(const PuglView* const view,
 }
 
 const char*
-puglGetClipboardType(PuglView* const     view,
-                     const PuglClipboard clipboard,
-                     const size_t        typeIndex)
+puglGetClipboardType(const PuglView* const view,
+                     const PuglClipboard   clipboard,
+                     const size_t          typeIndex)
 {
   if (clipboard == PUGL_CLIPBOARD_DRAG) {
     return (view->impl->droppedUrisLen && typeIndex == 0) ? "text/uri-list"
@@ -1133,12 +1132,12 @@ puglGetClipboardType(PuglView* const     view,
 
 PuglStatus
 puglAcceptOffer(PuglView* const                 view,
-                const PuglEventDataOffer* const offer,
+                const PuglDataOfferEvent* const offer,
                 const size_t                    typeIndex,
-                PuglDropAction                  action,
+                PuglAction                      action,
                 const PuglRect                  PUGL_UNUSED(region))
 {
-  const PuglEventData data = {
+  const PuglDataEvent data = {
     PUGL_DATA,
     0,
     GetMessageTime() / 1e3,
@@ -1244,7 +1243,7 @@ puglSetClipboard(PuglView* const     view,
 PuglStatus
 puglPaste(PuglView* const view)
 {
-  const PuglEventDataOffer offer = {
+  const PuglDataOfferEvent offer = {
     PUGL_DATA_OFFER,
     0,
     GetMessageTime() / 1e3,

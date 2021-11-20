@@ -150,8 +150,8 @@ elif host_machine.system() == 'windows'
 
   add_project_arguments(win_args, language: ['c', 'cpp'])
 
-  user32_dep = cc.find_library('USER32')
-  shlwapi_dep = cc.find_library('SHLWAPI')
+  user32_dep = cc.find_library('user32')
+  shlwapi_dep = cc.find_library('shlwapi')
 
   platform = 'win'
   platform_sources = files('src/win.c')
