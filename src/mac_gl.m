@@ -53,9 +53,10 @@
                                         puglview->hints[PUGL_ALPHA_BITS]);
 
   // clang-format off
-  NSOpenGLPixelFormatAttribute pixelAttribs[17] = {
+  NSOpenGLPixelFormatAttribute pixelAttribs[] = {
     NSOpenGLPFADoubleBuffer,
     NSOpenGLPFAAccelerated,
+    NSOpenGLPFAClosestPolicy,
     NSOpenGLPFAOpenGLProfile, profile,
     NSOpenGLPFAColorSize,     colorSize,
     NSOpenGLPFADepthSize,     (unsigned)puglview->hints[PUGL_DEPTH_BITS],
@@ -66,8 +67,25 @@
     0};
   // clang-format on
 
-  NSOpenGLPixelFormat* pixelFormat =
-    [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelAttribs];
+  NSOpenGLPixelFormat* pixelFormat = nil;
+  @try {
+    pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelAttribs];
+  }
+  @catch (NSException* e) {
+    pixelAttribs[] = {
+      NSOpenGLPFADoubleBuffer,
+      NSOpenGLPFARendererID, kCGLRendererGenericFloatID,
+      NSOpenGLPFAClosestPolicy,
+      NSOpenGLPFAOpenGLProfile, profile,
+      NSOpenGLPFAColorSize,     colorSize,
+      NSOpenGLPFADepthSize,     (unsigned)puglview->hints[PUGL_DEPTH_BITS],
+      NSOpenGLPFAStencilSize,   (unsigned)puglview->hints[PUGL_STENCIL_BITS],
+      NSOpenGLPFAMultisample,   samples ? 1u : 0u,
+      NSOpenGLPFASampleBuffers, samples ? 1u : 0u,
+      NSOpenGLPFASamples,       samples,
+    0};
+    pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelAttribs];
+  }
 
   if (pixelFormat) {
     self = [super initWithFrame:frame pixelFormat:pixelFormat];
